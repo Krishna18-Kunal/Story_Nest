@@ -37,7 +37,7 @@ button {
 .page {
   max-width: 1200px;
   margin: auto;
-  padding: 106px 24px 35px; /* upar jagah fixed navbar ke liye (desktop) */
+  padding: 106px 24px 35px;
 }
 
 #home,
@@ -47,7 +47,7 @@ button {
 }
 
 /* =========================================
-   NAVBAR (desktop: fixed)
+   NAVBAR
 ========================================= */
 
 .navbar {
@@ -57,7 +57,6 @@ button {
   transform: translateX(-50%);
   width: min(1152px, calc(100% - 24px));
   z-index: 9999;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -165,8 +164,6 @@ button {
 .nav-write-btn:hover {
   background: #6040c2;
 }
-
-/* Theme button (moon / sun icon) */
 
 .theme-btn {
   display: inline-grid;
@@ -465,7 +462,7 @@ button {
   vertical-align: middle;
 }
 
-/* Toolbar: sort + saved */
+/* Toolbar */
 
 .toolbar {
   display: flex;
@@ -541,17 +538,23 @@ button {
   border-color: #7655d9;
 }
 
-/* Grid + cards */
+/* =========================================
+   GRID + BLOG CARDS (FIXED ALIGNMENT)
+========================================= */
 
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
-  align-items: start;
+  align-items: stretch;            /* all cards in a row = same height */
 }
 
 .card {
-  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: visible;
   min-width: 0;
   border: 1px solid #ebe5f7;
   border-radius: 19px;
@@ -567,9 +570,11 @@ button {
 
 .thumb {
   display: block;
+  flex-shrink: 0;
   width: 100%;
   height: 185px;
   object-fit: cover;
+  border-radius: 18px 18px 0 0;
 }
 
 .placeholder {
@@ -591,7 +596,13 @@ button {
   letter-spacing: 0.13em;
 }
 
+/* BLOG CARD BODY */
+
 .card-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;                         /* fills remaining card height */
   padding: 20px;
 }
 
@@ -600,6 +611,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  padding-right: 42px;
 }
 
 .card-meta span {
@@ -614,11 +626,20 @@ button {
   font-size: 0.73rem;
 }
 
+/* Title: always reserves exactly 2 lines, max 2 lines */
 .card h3 {
+  flex: 1;
+  min-width: 0;
   margin: 12px 0 11px;
   font: 700 1.15rem Manrope, sans-serif;
   line-height: 1.45;
+  min-height: 2.9em;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .title-row {
@@ -628,7 +649,7 @@ button {
   gap: 8px;
 }
 
-/* Bookmark icon on card */
+/* Bookmark */
 
 .bookmark {
   flex-shrink: 0;
@@ -683,6 +704,7 @@ button {
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
+  min-height: 28px;
   margin: 0 0 12px;
   font-size: 0.8rem;
 }
@@ -706,17 +728,16 @@ button {
   font-weight: 700;
 }
 
-/* Card text (full text opens in the popup) */
+/* Card text: always reserves exactly 4 lines */
 
 .content {
-  min-height: 0;
   margin: 0;
+  min-height: 6.8em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.7;
   color: #6f687f;
   font-size: 0.88rem;
-
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
@@ -726,7 +747,9 @@ button {
 
 .read-more {
   display: inline-block;
+  align-self: flex-start;
   margin-top: 12px;
+  margin-bottom: 19px;
   padding: 0;
   border: none;
   background: transparent;
@@ -741,13 +764,13 @@ button {
   text-decoration: underline;
 }
 
-/* Author */
+/* Author: pinned to the bottom of every card */
 
 .author {
   display: flex;
   align-items: center;
   gap: 11px;
-  margin-top: 19px;
+  margin-top: auto;
   padding-top: 14px;
   border-top: 1px solid #f0ebf7;
 }
@@ -1066,7 +1089,7 @@ footer strong {
 }
 
 /* =========================================
-   TABS: Reviews | Questions
+   TABS
 ========================================= */
 
 .tabs {
@@ -1241,7 +1264,7 @@ footer strong {
 .review-main {
   flex: 1;
   min-width: 0;
-  padding-right: 34px; /* three-dot ke liye jagah */
+  padding-right: 34px;
 }
 
 .review-top {
@@ -1289,12 +1312,26 @@ footer strong {
   font-style: italic;
 }
 
-/* Three-dot menu */
+/* =========================================
+   THREE-DOT MENU
+========================================= */
+
+/* Review menu: review ke options */
 
 .review-menu {
   position: absolute;
   top: 10px;
   right: 10px;
+  z-index: 1000;
+}
+
+/* Blog menu: card-body ke top-right corner */
+
+.post-menu {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1000;
 }
 
 .dots-btn {
@@ -1303,13 +1340,17 @@ footer strong {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: none;
+  border: 1px solid #e9ddff;
   border-radius: 50%;
-  background: transparent;
-  transition: background 0.2s;
+  background: #f5f0ff;
+  color: #6d28d9;
+  cursor: pointer;
+  opacity: 1;
+  visibility: visible;
+  transition: background 0.2s, transform 0.2s;
 }
 
 .dots-btn span {
@@ -1317,31 +1358,26 @@ footer strong {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #8f84a6;
-  transition: background 0.2s;
+  background: #6d28d9;
 }
 
 .dots-btn:hover,
 .dots-btn.open {
-  background: #f0eaff;
-}
-
-.dots-btn:hover span,
-.dots-btn.open span {
-  background: #6d28d9;
+  background: #e9ddff;
+  transform: scale(1.08);
 }
 
 .dots-btn:focus-visible {
   outline: 2px solid #8b5cf6;
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
 .dots-dropdown {
   position: absolute;
-  top: 34px;
+  top: 40px;
   right: 0;
-  z-index: 20;
-  min-width: 140px;
+  z-index: 2000;
+  min-width: 155px;
   padding: 6px;
   border: 1px solid #ebe5f7;
   border-radius: 14px;
@@ -1356,7 +1392,7 @@ footer strong {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 10px 12px;
   border: none;
   border-radius: 9px;
   background: transparent;
@@ -1388,7 +1424,7 @@ footer strong {
   font-size: 0.9rem;
 }
 
-/* Edit review (sirf comment edit hota hai) */
+/* Edit review */
 
 .review-item.review-editing {
   flex-direction: column;
@@ -2055,9 +2091,18 @@ footer strong {
   background: #3a1624;
 }
 
+[data-theme='dark'] .dots-btn {
+  background: #2a2145;
+  border-color: #3a2f5a;
+}
+
+[data-theme='dark'] .dots-btn span {
+  background: #d8c8ff;
+}
+
 [data-theme='dark'] .dots-btn:hover,
 [data-theme='dark'] .dots-btn.open {
-  background: #2a2145;
+  background: #3a2f5a;
 }
 
 [data-theme='dark'] .modal-quick-rating {
@@ -2139,7 +2184,8 @@ footer strong {
    RESPONSIVE
 ========================================= */
 
-/* ---------- Tablet landscape ---------- */
+/* Tablet landscape */
+
 @media (max-width: 950px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2155,7 +2201,8 @@ footer strong {
   }
 }
 
-/* ---------- Tablet: navbar fixed se sticky (overlap nahi hoga) ---------- */
+/* Tablet navbar */
+
 @media (max-width: 820px) {
   .page {
     padding: 12px 16px 28px;
@@ -2198,7 +2245,8 @@ footer strong {
   }
 }
 
-/* ---------- Hero stack ---------- */
+/* Hero stack */
+
 @media (max-width: 700px) {
   .hero {
     flex-direction: column;
@@ -2247,13 +2295,13 @@ footer strong {
   }
 }
 
-/* ---------- Mobile ---------- */
+/* Mobile */
+
 @media (max-width: 650px) {
   .page {
     padding: 10px 12px 24px;
   }
 
-  /* mobile pe navbar scroll ke saath upar chala jaye, screen na dhake */
   .navbar {
     position: relative;
     top: 0;
@@ -2261,7 +2309,6 @@ footer strong {
     border-radius: 16px;
   }
 
-  /* Home / Explore chhupa do: logo + moon + Write button bachte hain */
   .nav-links > a {
     display: none;
   }
@@ -2334,6 +2381,13 @@ footer strong {
     height: 200px;
   }
 
+  /* Blog menu uses the same card-body position on mobile */
+
+  .post-menu {
+    top: 14px;
+    right: 14px;
+  }
+
   footer {
     flex-direction: column;
   }
@@ -2343,7 +2397,8 @@ footer strong {
     bottom: 14px;
   }
 
-  /* Popup as bottom sheet */
+  /* Popup bottom sheet */
+
   .modal-overlay {
     padding: 0;
     align-items: flex-end;
@@ -2401,7 +2456,8 @@ footer strong {
   }
 }
 
-/* ---------- Small phones ---------- */
+/* Small phones */
+
 @media (max-width: 420px) {
   .navbar {
     gap: 10px;
@@ -2456,7 +2512,8 @@ footer strong {
   }
 }
 
-/* ---------- Reduced motion ---------- */
+/* Reduced motion */
+
 @media (prefers-reduced-motion: reduce) {
   .creative-artwork *,
   .story-card,
@@ -2475,5 +2532,378 @@ footer strong {
 
   html {
     scroll-behavior: auto;
+  }
+}
+
+/* =========================================
+   STORY NEST - RESPONSIVE FIX
+   Desktop, Laptop, Tablet and Mobile
+========================================= */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+}
+
+body {
+  overflow-x: clip;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.grid,
+.panel,
+.card,
+.card-body,
+.hero,
+.hero-content,
+.section-head,
+.form,
+.field {
+  min-width: 0;
+}
+
+.grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.card img {
+  max-width: 100%;
+}
+
+.card h2,
+.card h3,
+.card p {
+  overflow-wrap: anywhere;
+}
+
+.nav-search {
+  min-width: 0;
+}
+
+.nav-search input,
+.field input,
+.field textarea,
+.toolbar select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.creative-artwork {
+  max-width: 100%;
+}
+
+/* Laptop */
+@media (max-width: 1100px) {
+  .page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .navbar {
+    gap: 14px;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .nav-links {
+    gap: 16px;
+  }
+
+  .hero {
+    padding: 36px 30px;
+  }
+
+  .grid {
+    gap: 18px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 950px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero-content {
+    width: 55%;
+  }
+
+  .creative-artwork {
+    max-width: 45%;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 100px 16px 30px;
+  }
+
+  .navbar {
+    position: sticky;
+    top: 8px;
+    left: auto;
+    transform: none;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .nav-logo {
+    order: 1;
+  }
+
+  .nav-links {
+    order: 2;
+    margin-left: auto;
+    gap: 12px;
+  }
+
+  .nav-search {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .hero {
+    min-height: 0;
+  }
+
+  .panel {
+    padding: 24px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 650px) {
+  .page {
+    padding: 12px 12px 24px;
+  }
+
+  .navbar {
+    position: relative;
+    top: 0;
+    width: 100%;
+    margin-bottom: 16px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .nav-logo {
+    font-size: 18px;
+  }
+
+  .nav-links {
+    margin-left: auto;
+    gap: 8px;
+  }
+
+  .nav-links > a {
+    display: none;
+  }
+
+  .nav-write-btn {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  .theme-btn {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+  }
+
+  .nav-search {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 26px 18px;
+    min-height: 0;
+  }
+
+  .hero-content {
+    width: 100%;
+  }
+
+  .hero-content h1 {
+    font-size: clamp(32px, 9vw, 44px);
+    overflow-wrap: anywhere;
+  }
+
+  .hero-tagline {
+    font-size: clamp(18px, 5vw, 23px);
+  }
+
+  .hero-description {
+    font-size: 14px;
+  }
+
+  .hero-stats {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+  }
+
+  .creative-artwork {
+    width: 100%;
+    max-width: 360px;
+    height: 280px;
+    align-self: center;
+    margin: 10px auto 0;
+    transform: scale(0.85);
+    transform-origin: top center;
+  }
+
+  .panel {
+    margin-top: 24px;
+    padding: 18px;
+    border-radius: 17px;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .field.full,
+  .form-foot.full {
+    grid-column: auto;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .card-body {
+    padding: 16px;
+  }
+
+  .thumb {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+  }
+
+  .toolbar {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .toolbar select {
+    width: 100%;
+  }
+
+  .form-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-foot .btn {
+    width: 100%;
+  }
+
+  footer {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 94vh;
+    overflow-y: auto;
+  }
+
+  .modal-body {
+    padding: 20px 16px;
+  }
+
+  .tabs {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 420px) {
+  .page {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .navbar {
+    padding: 10px;
+  }
+
+  .nav-logo {
+    font-size: 16px;
+  }
+
+  .hero {
+    padding: 22px 15px;
+  }
+
+  .hero-content h1 {
+    font-size: 32px;
+  }
+
+  .creative-artwork {
+    max-width: 300px;
+    transform: scale(0.78);
+    transform-origin: top center;
+  }
+
+  .panel {
+    padding: 15px;
+  }
+
+  .card-body {
+    padding: 14px;
+  }
+
+  .modal-title {
+    font-size: 1.25rem;
+  }
+}
+
+/* Prevent flex/grid children from overflowing */
+@media (max-width: 950px) {
+  .navbar > *,
+  .section-head > *,
+  .form-foot > * {
+    min-width: 0;
   }
 }

@@ -1,61 +1,33 @@
+﻿
 import { useCallback, useEffect, useState } from 'react';
+import imageCompression from 'browser-image-compression';
 import './App.css';
-
-const API = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000'
-).replace(/\/+$/, '');
+import './auth.css';
+import { API, apiRequest } from './services/api';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import AuthModal from './components/AuthModal';
 
 const DEFAULT_AUTHOR = 'Krishna Kunal';
-const REVIEWS_KEY = 'blog-data-hub-reviews';
-const CLIENT_KEY = 'blog-data-hub-client-id';
-const SAVED_KEY = 'blog-data-hub-saved';
-const THEME_KEY = 'blog-data-hub-theme';
-const DRAFT_KEY = 'blog-data-hub-draft';
-const QA_KEY = 'blog-data-hub-questions';
-
-/* ---------- Storage helpers (browser localStorage) ---------- */
-
-function loadReviews() {
-  try {
-    const saved = localStorage.getItem(REVIEWS_KEY);
-    return saved ? JSON.parse(saved) : {};
-  } catch {
-    return {};
-  }
-}
 
 function loadJSON(key, fallback) {
   try {
-    const s = localStorage.getItem(key);
-    return s ? JSON.parse(s) : fallback;
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
   } catch {
     return fallback;
   }
 }
 
-// Unique ID for this browser - used to know who owns a review / question
-function getClientId() {
-  try {
-    let id = localStorage.getItem(CLIENT_KEY);
-    if (!id) {
-      id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      localStorage.setItem(CLIENT_KEY, id);
-    }
-    return id;
-  } catch {
-    return 'user-temp';
-  }
-}
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
+const SAVED_KEY = 'blog-data-hub-saved';
+const THEME_KEY = 'blog-data-hub-theme';
+const DRAFT_KEY = 'blog-data-hub-draft';
 
 function getStats(list = []) {
   const count = list.length;
   const avg = count
-    ? list.reduce((sum, r) => sum + r.rating, 0) / count
+    ? list.reduce((sum, r) => sum + Number(r.rating || 0), 0) / count
     : 0;
+
   return { count, avg };
 }
 
@@ -73,8 +45,6 @@ function readingTime(text = '') {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(words / 200));
 }
-
-/* ---------- Icons (SVG) ---------- */
 
 const iconProps = {
   viewBox: '0 0 24 24',
@@ -123,14 +93,15 @@ function ClockIcon({ size = 16 }) {
   );
 }
 
-/* ---------- Star components ---------- */
-
 function Stars({ value = 0 }) {
-  const rounded = Math.round(value);
+  const rounded = Math.round(Number(value) || 0);
+
   return (
-    <span className="stars" aria-label={`${value.toFixed(1)} out of 5 stars`}>
+    <span className="stars" aria-label={`${Number(value || 0).toFixed(1)} out of 5 stars`}>
       {[1, 2, 3, 4, 5].map(n => (
-        <span key={n} className={n <= rounded ? 'star on' : 'star'}>★</span>
+        <span key={n} className={n <= rounded ? 'star on' : 'star'}>
+          ★
+        </span>
       ))}
     </span>
   );
@@ -154,14 +125,13 @@ function StarInput({ value, onChange }) {
           ★
         </button>
       ))}
+
       <span className="star-label">
         {['Select rating', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'][shown]}
       </span>
     </div>
   );
 }
-
-/* ---------- Hero artwork ---------- */
 
 function CreativeArtwork() {
   return (
@@ -231,7 +201,12 @@ function CreativeArtwork() {
   );
 }
 
-export default function App() {
+function StoryNestApp() {
+  const { user, loading: authLoading, login, register, logout, googleLogin } = useAuth(); const currentUserId = String(
+    user?._id || user?.id || user?.userId || ''
+  );
+
+  const [authMode, setAuthMode] = useState(null);
   const [posts, setPosts] = useState([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -247,7 +222,6 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
 
-  // Theme, bookmarks, sort, progress, back-to-top
   const [theme, setTheme] = useState(() => loadJSON(THEME_KEY, 'light'));
   const [saved, setSaved] = useState(() => loadJSON(SAVED_KEY, []));
   const [sort, setSort] = useState('newest');
@@ -255,38 +229,47 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [showTop, setShowTop] = useState(false);
 
-  // Reviews + popup
-  const [clientId] = useState(getClientId);
-  const [reviews, setReviews] = useState(loadReviews);
+  const [reviews, setReviews] = useState({});
   const [activePostId, setActivePostId] = useState(null);
-  const [reviewName, setReviewName] = useState('');
+
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
   const [reviewMsg, setReviewMsg] = useState({ type: '', text: '' });
 
-  // Three-dot menu + review edit (only the comment can be edited)
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editReviewId, setEditReviewId] = useState(null);
   const [editComment, setEditComment] = useState('');
   const [editError, setEditError] = useState('');
 
-  // Q&A
   const [tab, setTab] = useState('reviews');
-  const [questions, setQuestions] = useState(() => loadJSON(QA_KEY, {}));
-  const [qName, setQName] = useState('');
+  const [questions, setQuestions] = useState({});
   const [qText, setQText] = useState('');
   const [qMsg, setQMsg] = useState({ type: '', text: '' });
+  const [qGuestName, setQGuestName] = useState('');
+  const [qGuestEmail, setQGuestEmail] = useState('');
   const [replyOpenId, setReplyOpenId] = useState(null);
-  const [aName, setAName] = useState('');
   const [aText, setAText] = useState('');
   const [aError, setAError] = useState('');
+
+  function requireLogin() {
+    if (!user) {
+      setAuthMode('login');
+      return false;
+    }
+    return true;
+  }
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch(`${API}/posts`);
+      const response = await fetch(`${API}/posts`, {
+        credentials: 'include'
+      });
+
       const result = await response.json();
 
       if (!response.ok || result.success === false) {
@@ -294,6 +277,24 @@ export default function App() {
       }
 
       setPosts(Array.isArray(result.data) ? result.data : []);
+
+      const [reviewResult, questionResult] = await Promise.all([
+        apiRequest('/reviews'),
+        apiRequest('/questions')
+      ]);
+
+      const reviewGroups = {};
+      (reviewResult.data || []).forEach(item => {
+        (reviewGroups[item.postId] ||= []).push(item);
+      });
+
+      const questionGroups = {};
+      (questionResult.data || []).forEach(item => {
+        (questionGroups[item.postId] ||= []).push(item);
+      });
+
+      setReviews(reviewGroups);
+      setQuestions(questionGroups);
     } catch (e) {
       setError(`${e.message}. Check backend connection and VITE_API_URL.`);
     } finally {
@@ -305,63 +306,41 @@ export default function App() {
     loadPosts();
   }, [loadPosts]);
 
-  // Save reviews whenever they change
-  useEffect(() => {
-    try {
-      localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
-    } catch {
-      /* storage full or blocked - ignore */
-    }
-  }, [reviews]);
-
-  // Save questions whenever they change
-  useEffect(() => {
-    try {
-      localStorage.setItem(QA_KEY, JSON.stringify(questions));
-    } catch {
-      /* ignore */
-    }
-  }, [questions]);
-
-  // Theme (dark / light)
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+
     try {
       localStorage.setItem(THEME_KEY, JSON.stringify(theme));
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }, [theme]);
 
-  // Save bookmarks
   useEffect(() => {
     try {
       localStorage.setItem(SAVED_KEY, JSON.stringify(saved));
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }, [saved]);
 
-  // Back-to-top visibility
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 500);
+
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Draft autosave (only while writing a new blog)
   useEffect(() => {
     if (!showForm || editingId || (!title && !content)) return;
+
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, content, author }));
-    } catch {
-      /* ignore */
-    }
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ title, content, author })
+      );
+    } catch {}
   }, [showForm, editingId, title, content, author]);
 
-  const activePost = posts.find(p => p._id === activePostId) || null;
+  const activePost =
+    posts.find(p => String(p._id) === String(activePostId)) || null;
 
-  // Esc to close + lock page scroll while popup is open
   useEffect(() => {
     if (!activePost) return undefined;
 
@@ -373,6 +352,7 @@ export default function App() {
     };
 
     document.addEventListener('keydown', onKey);
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -382,44 +362,53 @@ export default function App() {
     };
   }, [activePost]);
 
-  // Close the three-dot menu when clicking anywhere outside it
   useEffect(() => {
     if (!menuOpenId) return undefined;
 
     const onClick = e => {
-      if (!e.target.closest('.review-menu')) setMenuOpenId(null);
+      if (!e.target.closest('.review-menu')) {
+        setMenuOpenId(null);
+      }
     };
 
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
   }, [menuOpenId]);
 
-  // Search filter + saved filter + sorting
   const query = search.trim().toLowerCase();
+
   const filteredPosts = posts
-    .filter(
-      post =>
+    .filter(post => {
+      const matchesSearch =
         `${post.title || ''} ${post.content || ''} ${post.author || ''}`
           .toLowerCase()
-          .includes(query) &&
-        (!onlySaved || saved.includes(post._id))
-    )
+          .includes(query);
+
+      const matchesSaved = !onlySaved || saved.includes(post._id);
+
+      return matchesSearch && matchesSaved;
+    })
     .sort((a, b) => {
       if (sort === 'oldest') {
         return new Date(a.createdAt) - new Date(b.createdAt);
       }
+
       if (sort === 'top') {
         return getStats(reviews[b._id]).avg - getStats(reviews[a._id]).avg;
       }
+
       if (sort === 'most') {
         return getStats(reviews[b._id]).count - getStats(reviews[a._id]).count;
       }
+
       return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
   function toggleSave(id) {
     setSaved(old =>
-      old.includes(id) ? old.filter(x => x !== id) : [...old, id]
+      old.includes(id)
+        ? old.filter(x => x !== id)
+        : [...old, id]
     );
   }
 
@@ -431,17 +420,19 @@ export default function App() {
   }
 
   function openBlogForm() {
+    if (!requireLogin()) return;
+
     setShowForm(true);
     setError('');
     setNotice('');
 
-    // Restore unsaved draft (if any)
     if (!title && !content) {
-      const d = loadJSON(DRAFT_KEY, null);
-      if (d) {
-        setTitle(d.title || '');
-        setContent(d.content || '');
-        setAuthor(d.author || DEFAULT_AUTHOR);
+      const draft = loadJSON(DRAFT_KEY, null);
+
+      if (draft) {
+        setTitle(draft.title || '');
+        setContent(draft.content || '');
+        setAuthor(draft.author || DEFAULT_AUTHOR);
       }
     }
 
@@ -470,6 +461,8 @@ export default function App() {
     setError('');
     setNotice('');
 
+    if (!requireLogin()) return;
+
     if (!title.trim() || !content.trim()) {
       setError('Title and content are required.');
       return;
@@ -480,22 +473,45 @@ export default function App() {
       return;
     }
 
+    if (editingId) {
+      const postBeingEdited = posts.find(
+        p => String(p._id) === String(editingId)
+      );
+
+      if (
+        !postBeingEdited ||
+        String(postBeingEdited.authorId || '') !== currentUserId
+      ) {
+        setError('You can edit only your own blog.');
+        return;
+      }
+    }
+
     const form = new FormData();
 
     form.append('title', title.trim());
     form.append('content', content.trim());
-    form.append('author', author.trim() || DEFAULT_AUTHOR);
+    form.append('author', user?.name || author.trim() || DEFAULT_AUTHOR);
 
-    if (image) form.append('image', image);
+    if (image) {
+  const compressedImage = await imageCompression(image, {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1600,
+    useWebWorker: true
+  });
 
-    setSaving(true);
+  form.append('image', compressedImage, image.name);
+}    setSaving(true);
 
     try {
       const response = await fetch(
-        editingId ? `${API}/posts/${editingId}` : `${API}/posts`,
+        editingId
+          ? `${API}/posts/${editingId}`
+          : `${API}/posts`,
         {
           method: editingId ? 'PUT' : 'POST',
-          body: form
+          body: form,
+          credentials: 'include'
         }
       );
 
@@ -513,15 +529,24 @@ export default function App() {
 
       try {
         localStorage.removeItem(DRAFT_KEY);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
+
+     
+      setPosts(prev =>
+        editingId
+          ? prev.map(post =>
+              String(post._id) === String(result.data._id)
+                ? result.data
+                : post
+            )
+          : [result.data, ...prev]
+      );
 
       clearForm();
       setShowForm(false);
-      await loadPosts();
 
       setTimeout(scrollToBlogs, 150);
+
     } catch (e) {
       setError(e.message || 'Unable to save post.');
     } finally {
@@ -530,11 +555,23 @@ export default function App() {
   }
 
   function edit(post) {
+    if (
+      !user ||
+      String(post.authorId || '') !== currentUserId
+    ) {
+      setError('You can edit only your own blog.');
+      return;
+    }
+
+    setMenuOpenId(null);
     setEditingId(post._id);
     setTitle(post.title || '');
     setContent(post.content || '');
     setAuthor(post.author || DEFAULT_AUTHOR);
     setImage(null);
+
+    const input = document.getElementById('post-image');
+    if (input) input.value = '';
 
     setError('');
     setNotice('');
@@ -549,6 +586,19 @@ export default function App() {
   }
 
   async function remove(id) {
+    const post = posts.find(p => String(p._id) === String(id));
+
+    if (
+      !post ||
+      !user ||
+      String(post.authorId || '') !== currentUserId
+    ) {
+      setError('You can delete only your own blog.');
+      return;
+    }
+
+    setMenuOpenId(null);
+
     if (!window.confirm('Are you sure you want to delete this blog?')) {
       return;
     }
@@ -558,7 +608,8 @@ export default function App() {
 
     try {
       const response = await fetch(`${API}/posts/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
 
       const result = await response.json();
@@ -567,15 +618,23 @@ export default function App() {
         throw new Error(result.message || `HTTP ${response.status}`);
       }
 
-      setPosts(old => old.filter(post => post._id !== id));
-      setSaved(old => old.filter(x => x !== id));
+      setPosts(old =>
+        old.filter(item => String(item._id) !== String(id))
+      );
+
+      setSaved(old =>
+        old.filter(item => String(item) !== String(id))
+      );
+
+      if (String(activePostId) === String(id)) {
+        setActivePostId(null);
+      }
+
       setNotice('Blog deleted successfully!');
     } catch (e) {
       setError(e.message || 'Unable to delete post.');
     }
   }
-
-  /* ---------- Popup + review handlers ---------- */
 
   function cancelEditReview() {
     setEditReviewId(null);
@@ -583,23 +642,28 @@ export default function App() {
     setEditError('');
   }
 
-  function openPost(id) {
+  async function openPost(id) {
     setActivePostId(id);
-    setReviewName('');
     setReviewRating(0);
     setReviewComment('');
+    setGuestName('');
+    setGuestEmail('');
     setReviewMsg({ type: '', text: '' });
     setMenuOpenId(null);
     setProgress(0);
     setTab('reviews');
-    setQName('');
     setQText('');
     setQMsg({ type: '', text: '' });
     setReplyOpenId(null);
-    setAName('');
     setAText('');
     setAError('');
     cancelEditReview();
+
+    try {
+      await refreshCommunity(id);
+    } catch (e) {
+      setReviewMsg({ type: 'error', text: e.message });
+    }
   }
 
   function closePost() {
@@ -608,56 +672,107 @@ export default function App() {
     cancelEditReview();
   }
 
-  // Only the browser that wrote the review can edit/delete it.
-  // Old reviews without an owner were created in this browser, so they count as owned.
-  function isOwner(review) {
-    return !review.ownerId || review.ownerId === clientId;
+  function isOwner(item) {
+    return Boolean(
+      user &&
+      currentUserId &&
+      item?.ownerId &&
+      String(item.ownerId) === currentUserId
+    );
   }
 
-  function submitReview(event) {
-    event.preventDefault();
+  async function refreshCommunity(postId = activePostId) {
+    if (!postId) return;
 
-    if (!reviewName.trim()) {
-      setReviewMsg({ type: 'error', text: 'Please enter your name.' });
-      return;
-    }
-
-    if (!reviewRating) {
-      setReviewMsg({ type: 'error', text: 'Please select a star rating.' });
-      return;
-    }
-
-    if (!reviewComment.trim()) {
-      setReviewMsg({ type: 'error', text: 'Please write a short comment.' });
-      return;
-    }
-
-    const newReview = {
-      id: makeId(),
-      ownerId: clientId,
-      name: reviewName.trim(),
-      rating: reviewRating,
-      comment: reviewComment.trim(),
-      createdAt: new Date().toISOString(),
-      editedAt: null
-    };
+    const [reviewResult, questionResult] = await Promise.all([
+      apiRequest(`/reviews/post/${postId}`),
+      apiRequest(`/questions/post/${postId}`)
+    ]);
 
     setReviews(old => ({
       ...old,
-      [activePostId]: [newReview, ...(old[activePostId] || [])]
+      [postId]: reviewResult.data || []
     }));
 
-    setReviewName('');
-    setReviewRating(0);
-    setReviewComment('');
-    setReviewMsg({
-      type: 'success',
-      text: 'Thank you! Your review has been added.'
-    });
+    setQuestions(old => ({
+      ...old,
+      [postId]: questionResult.data || []
+    }));
+  }
+
+  // Guest and logged-in user can submit reviews.
+  // Guest name is required; guest email is optional.
+  async function submitReview(event) {
+    event.preventDefault();
+
+    if (!activePostId) return;
+
+    if (!reviewRating || !reviewComment.trim()) {
+      setReviewMsg({
+        type: 'error',
+        text: 'Select a star rating and write a comment.'
+      });
+      return;
+    }
+
+    if (!user) {
+      if (!guestName.trim()) {
+        setReviewMsg({
+          type: 'error',
+          text: 'Please enter your name.'
+        });
+        return;
+      }
+
+      // Validate email only when the guest has entered it.
+      if (
+        guestEmail.trim() &&
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())
+      ) {
+        setReviewMsg({
+          type: 'error',
+          text: 'Please enter a valid email address.'
+        });
+        return;
+      }
+    }
+
+    try {
+      await apiRequest(`/reviews/post/${activePostId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+          ...(!user && {
+            name: guestName.trim(),
+            ...(guestEmail.trim() && {
+              email: guestEmail.trim()
+            })
+          })
+        })
+      });
+
+      await refreshCommunity();
+
+      setReviewRating(0);
+      setReviewComment('');
+      setGuestName('');
+      setGuestEmail('');
+
+      setReviewMsg({
+        type: 'success',
+        text: 'Your review has been published.'
+      });
+    } catch (e) {
+      setReviewMsg({
+        type: 'error',
+        text: e.message
+      });
+    }
   }
 
   function toggleMenu(id) {
-    setMenuOpenId(current => (current === id ? null : id));
+    setMenuOpenId(current => current === id ? null : id);
   }
 
   function startEditReview(review) {
@@ -665,12 +780,11 @@ export default function App() {
 
     setMenuOpenId(null);
     setEditReviewId(review.id);
-    setEditComment(review.comment);
+    setEditComment(review.comment || '');
     setEditError('');
   }
 
-  // Only the comment text is updated - name and rating stay the same
-  function saveEditReview(event) {
+  async function saveEditReview(event) {
     event.preventDefault();
 
     if (!editComment.trim()) {
@@ -678,142 +792,236 @@ export default function App() {
       return;
     }
 
-    setReviews(old => ({
-      ...old,
-      [activePostId]: (old[activePostId] || []).map(r =>
-        r.id === editReviewId && isOwner(r)
-          ? {
-              ...r,
-              ownerId: clientId,
-              comment: editComment.trim(),
-              editedAt: new Date().toISOString()
-            }
-          : r
-      )
-    }));
+    try {
+      await apiRequest(`/reviews/${editReviewId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ comment: editComment.trim() })
+      });
 
-    cancelEditReview();
+      await refreshCommunity();
+      cancelEditReview();
+    } catch (e) {
+      setEditError(e.message);
+    }
   }
 
-  function deleteReview(review) {
+  async function deleteReview(review) {
     setMenuOpenId(null);
 
-    if (!isOwner(review)) return;
-    if (!window.confirm('Delete your review? This cannot be undone.')) return;
+    if (
+      !isOwner(review) ||
+      !window.confirm('Delete your review? This cannot be undone.')
+    ) {
+      return;
+    }
 
-    setReviews(old => ({
-      ...old,
-      [activePostId]: (old[activePostId] || []).filter(r => r.id !== review.id)
-    }));
+    try {
+      await apiRequest(`/reviews/${review.id}`, {
+        method: 'DELETE'
+      });
 
-    if (editReviewId === review.id) cancelEditReview();
+      await refreshCommunity();
+
+      if (editReviewId === review.id) {
+        cancelEditReview();
+      }
+    } catch (e) {
+      setReviewMsg({ type: 'error', text: e.message });
+    }
   }
 
-  /* ---------- Q&A handlers ---------- */
-
-  function submitQuestion(event) {
+  async function submitQuestion(event) {
     event.preventDefault();
 
-    if (!qName.trim()) {
-      setQMsg({ type: 'error', text: 'Please enter your name.' });
-      return;
-    }
+    if (!activePostId) return;
 
     if (!qText.trim()) {
-      setQMsg({ type: 'error', text: 'Please write your question.' });
+      setQMsg({
+        type: 'error',
+        text: 'Please write your question.'
+      });
       return;
     }
 
-    const newQuestion = {
-      id: makeId(),
-      ownerId: clientId,
-      name: qName.trim(),
-      text: qText.trim(),
-      createdAt: new Date().toISOString(),
-      answers: []
-    };
+    // Q&A guest name and email remain mandatory.
+    if (!user) {
+      if (!qGuestName.trim() || !qGuestEmail.trim()) {
+        setQMsg({
+          type: 'error',
+          text: 'Please enter your name and email.'
+        });
+        return;
+      }
 
-    setQuestions(old => ({
-      ...old,
-      [activePostId]: [newQuestion, ...(old[activePostId] || [])]
-    }));
+      const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        qGuestEmail.trim()
+      );
 
-    setQText('');
-    setQMsg({ type: 'success', text: 'Your question has been posted.' });
+      if (!emailValid) {
+        setQMsg({
+          type: 'error',
+          text: 'Please enter a valid email address.'
+        });
+        return;
+      }
+    }
+
+    try {
+      await apiRequest(`/questions/post/${activePostId}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: qText.trim(),
+          ...(!user && {
+            name: qGuestName.trim(),
+            email: qGuestEmail.trim()
+          })
+        })
+      });
+
+      await refreshCommunity();
+
+      setQText('');
+      setQGuestName('');
+      setQGuestEmail('');
+
+      setQMsg({
+        type: 'success',
+        text: 'Your question has been posted.'
+      });
+    } catch (e) {
+      setQMsg({
+        type: 'error',
+        text: e.message
+      });
+    }
   }
 
   function openReply(id) {
-    setReplyOpenId(current => (current === id ? null : id));
+    if (!requireLogin()) return;
+
+    setReplyOpenId(current => current === id ? null : id);
     setAText('');
     setAError('');
   }
 
-  function submitAnswer(event, questionId) {
+  async function submitAnswer(event, questionId) {
     event.preventDefault();
 
-    if (!aName.trim()) {
-      setAError('Please enter your name.');
-      return;
-    }
+    if (!requireLogin()) return;
 
     if (!aText.trim()) {
       setAError('Please write your answer.');
       return;
     }
 
-    const newAnswer = {
-      id: makeId(),
-      ownerId: clientId,
-      name: aName.trim(),
-      text: aText.trim(),
-      createdAt: new Date().toISOString()
-    };
+    try {
+      await apiRequest(`/questions/${questionId}/answers`, {
+        method: 'POST',
+        body: JSON.stringify({ text: aText.trim() })
+      });
 
-    setQuestions(old => ({
-      ...old,
-      [activePostId]: (old[activePostId] || []).map(q =>
-        q.id === questionId
-          ? { ...q, answers: [...(q.answers || []), newAnswer] }
-          : q
-      )
-    }));
+      await refreshCommunity();
 
-    setAText('');
-    setAError('');
-    setReplyOpenId(null);
+      setAText('');
+      setAError('');
+      setReplyOpenId(null);
+    } catch (e) {
+      setAError(e.message);
+    }
   }
 
-  function deleteQuestion(question) {
-    if (question.ownerId !== clientId) return;
-    if (!window.confirm('Delete your question and all its answers?')) return;
+  async function deleteQuestion(question) {
+    if (
+      !isOwner(question) ||
+      !window.confirm('Delete your question and all its answers?')
+    ) {
+      return;
+    }
 
-    setQuestions(old => ({
-      ...old,
-      [activePostId]: (old[activePostId] || []).filter(q => q.id !== question.id)
-    }));
+    try {
+      await apiRequest(`/questions/${question.id}`, {
+        method: 'DELETE'
+      });
+
+      await refreshCommunity();
+    } catch (e) {
+      setQMsg({ type: 'error', text: e.message });
+    }
   }
 
-  function deleteAnswer(questionId, answer) {
-    if (answer.ownerId !== clientId) return;
-    if (!window.confirm('Delete your answer?')) return;
+  async function editQuestion(question) {
+    if (!isOwner(question)) return;
 
-    setQuestions(old => ({
-      ...old,
-      [activePostId]: (old[activePostId] || []).map(q =>
-        q.id === questionId
-          ? { ...q, answers: (q.answers || []).filter(a => a.id !== answer.id) }
-          : q
-      )
-    }));
+    const text = window.prompt('Edit your question:', question.text);
+
+    if (text === null || !text.trim()) return;
+
+    try {
+      await apiRequest(`/questions/${question.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ text: text.trim() })
+      });
+
+      await refreshCommunity();
+    } catch (e) {
+      setQMsg({ type: 'error', text: e.message });
+    }
   }
 
-  const activeReviews = activePost ? reviews[activePost._id] || [] : [];
+  async function deleteAnswer(questionId, answer) {
+    if (
+      !isOwner(answer) ||
+      !window.confirm('Delete your answer?')
+    ) {
+      return;
+    }
+
+    try {
+      await apiRequest(
+        `/questions/${questionId}/answers/${answer.id}`,
+        { method: 'DELETE' }
+      );
+
+      await refreshCommunity();
+    } catch (e) {
+      setAError(e.message);
+    }
+  }
+
+  async function editAnswer(questionId, answer) {
+    if (!isOwner(answer)) return;
+
+    const text = window.prompt('Edit your answer:', answer.text);
+
+    if (text === null || !text.trim()) return;
+
+    try {
+      await apiRequest(
+        `/questions/${questionId}/answers/${answer.id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ text: text.trim() })
+        }
+      );
+
+      await refreshCommunity();
+    } catch (e) {
+      setAError(e.message);
+    }
+  }
+
+  const activeReviews = activePost
+    ? reviews[activePost._id] || []
+    : [];
+
   const activeStats = getStats(activeReviews);
-  const activeQuestions = activePost ? questions[activePost._id] || [] : [];
+
+  const activeQuestions = activePost
+    ? questions[activePost._id] || []
+    : [];
 
   return (
     <div className="page">
-
       {/* NAVBAR */}
       <nav className="navbar">
         <a
@@ -826,6 +1034,7 @@ export default function App() {
 
         <div className="nav-search">
           <span className="search-icon">🔍</span>
+
           <input
             type="text"
             placeholder="Search blogs..."
@@ -836,6 +1045,7 @@ export default function App() {
               scrollToBlogs();
             }}
           />
+
           {search && (
             <button
               type="button"
@@ -857,7 +1067,7 @@ export default function App() {
             className="theme-btn"
             aria-label="Toggle dark mode"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+            onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
@@ -869,6 +1079,39 @@ export default function App() {
           >
             ✎ Write a Blog
           </button>
+
+          {user ? (
+            <>
+              <span className="nav-user">Hi, {user.name}</span>
+
+              <button
+                className="nav-auth"
+                type="button"
+                onClick={async () => {
+                  try {
+                    await logout();
+                    setAuthMode(null);
+                    setShowForm(false);
+                    clearForm();
+                    cancelEditReview();
+                    setMenuOpenId(null);
+                  } catch (e) {
+                    setError(e.message);
+                  }
+                }}
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <button
+              className="nav-auth"
+              type="button"
+              onClick={() => setAuthMode('login')}
+            >
+              Log in / Sign up
+            </button>
+          )}
         </div>
       </nav>
 
@@ -944,7 +1187,7 @@ export default function App() {
           </button>
         </div>
 
-        {/* TOOLBAR: sort + saved filter */}
+        {/* TOOLBAR */}
         <div className="toolbar">
           <div className="select-wrap">
             <select
@@ -992,6 +1235,7 @@ export default function App() {
           <div className="empty">
             <div className="empty-icon">🔍</div>
             <h3>No blogs found</h3>
+
             <p>
               {onlySaved && !query
                 ? 'You have not saved any blogs yet.'
@@ -1015,8 +1259,62 @@ export default function App() {
               const stats = getStats(reviews[post._id]);
               const isSaved = saved.includes(post._id);
 
+              const isPostOwner = Boolean(
+                user &&
+                currentUserId &&
+                String(post.authorId || '') === currentUserId
+              );
+
+              const postMenuId = `post-${post._id}`;
+
               return (
                 <article className="card" key={post._id}>
+                  {/* OWNER-ONLY THREE-DOT MENU */}
+                  {isPostOwner && (
+                    <div className="review-menu post-menu">
+                      <button
+                        type="button"
+                        className={
+                          menuOpenId === postMenuId
+                            ? 'dots-btn open'
+                            : 'dots-btn'
+                        }
+                        aria-label="Blog options"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpenId === postMenuId}
+                        onClick={() => toggleMenu(postMenuId)}
+                      >
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </button>
+
+                      {menuOpenId === postMenuId && (
+                        <div className="dots-dropdown" role="menu">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="dots-item"
+                            onClick={() => edit(post)}
+                          >
+                            <span className="dots-icon">✎</span>
+                            Edit Blog
+                          </button>
+
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="dots-item danger"
+                            onClick={() => remove(post._id)}
+                          >
+                            <span className="dots-icon">🗑</span>
+                            Delete Blog
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {post.imageUrl ? (
                     <img
                       className="thumb"
@@ -1034,6 +1332,7 @@ export default function App() {
                   <div className="card-body">
                     <div className="card-meta">
                       <span>✦ ARTICLE</span>
+
                       <small>
                         {post.createdAt ? formatDate(post.createdAt) : 'New Post'}
                         {' · '}
@@ -1043,6 +1342,7 @@ export default function App() {
 
                     <div className="title-row">
                       <h3>{post.title}</h3>
+
                       <button
                         type="button"
                         className={isSaved ? 'bookmark on' : 'bookmark'}
@@ -1056,6 +1356,7 @@ export default function App() {
 
                     <div className="card-rating">
                       <Stars value={stats.avg} />
+
                       {stats.count > 0 ? (
                         <>
                           <strong>{stats.avg.toFixed(1)}</strong>
@@ -1066,6 +1367,7 @@ export default function App() {
                       ) : (
                         <span className="rating-count">No reviews yet</span>
                       )}
+
                       <span className="comment-pill" title="Comments">
                         💬 {stats.count}
                       </span>
@@ -1093,24 +1395,6 @@ export default function App() {
                         <strong>{post.author || DEFAULT_AUTHOR}</strong>
                       </div>
                     </div>
-
-                    <div className="actions">
-                      <button
-                        className="btn light"
-                        type="button"
-                        onClick={() => edit(post)}
-                      >
-                        ✎ Edit
-                      </button>
-
-                      <button
-                        className="btn danger"
-                        type="button"
-                        onClick={() => remove(post._id)}
-                      >
-                        ✕ Delete
-                      </button>
-                    </div>
                   </div>
                 </article>
               );
@@ -1119,7 +1403,7 @@ export default function App() {
         )}
       </section>
 
-      {/* CREATE BLOG FORM - LAST SECTION, HIDDEN UNTIL OPENED */}
+      {/* CREATE / EDIT BLOG FORM */}
       {showForm && (
         <section className="panel" id="create-blog">
           <div className="section-head">
@@ -1141,6 +1425,7 @@ export default function App() {
               onClick={() => {
                 if (editingId) clearForm();
                 setShowForm(false);
+                setError('');
               }}
             >
               ✕ Close
@@ -1150,6 +1435,7 @@ export default function App() {
           <form onSubmit={submit} className="form">
             <div className="field">
               <label htmlFor="post-title">Blog Title *</label>
+
               <input
                 id="post-title"
                 value={title}
@@ -1162,16 +1448,18 @@ export default function App() {
 
             <div className="field">
               <label htmlFor="post-author">Author Name</label>
+
               <input
                 id="post-author"
-                value={author}
-                onChange={e => setAuthor(e.target.value)}
-                placeholder="Your name"
+                value={user?.name || author}
+                readOnly
+                aria-readonly="true"
               />
             </div>
 
             <div className="field full">
               <label htmlFor="post-content">Blog Content *</label>
+
               <textarea
                 id="post-content"
                 rows="6"
@@ -1180,6 +1468,7 @@ export default function App() {
                 required
                 placeholder="Write your amazing blog here..."
               />
+
               <small>
                 {content.trim().split(/\s+/).filter(Boolean).length} words ·{' '}
                 {readingTime(content)} min read
@@ -1189,12 +1478,14 @@ export default function App() {
 
             <div className="field full">
               <label htmlFor="post-image">Cover Image (Optional)</label>
+
               <input
                 id="post-image"
                 type="file"
                 accept="image/*"
                 onChange={e => setImage(e.target.files?.[0] || null)}
               />
+
               <small>
                 Maximum image size: 5 MB. Cloudinary configuration
                 is required for image uploads.
@@ -1207,7 +1498,7 @@ export default function App() {
               <button
                 className="btn primary"
                 type="submit"
-                disabled={saving}
+                disabled={saving || authLoading}
               >
                 {saving
                   ? 'Publishing...'
@@ -1241,7 +1532,7 @@ export default function App() {
         <div>Your Space · Your Stories · Your Voice</div>
       </footer>
 
-      {/* ========== BLOG POPUP (Read More) ========== */}
+      {/* BLOG POPUP */}
       {activePost && (
         <div className="modal-overlay" onClick={closePost}>
           <div
@@ -1256,7 +1547,10 @@ export default function App() {
               setProgress(max > 0 ? (el.scrollTop / max) * 100 : 0);
             }}
           >
-            <div className="read-progress" style={{ width: `${progress}%` }} />
+            <div
+              className="read-progress"
+              style={{ width: `${progress}%` }}
+            />
 
             <button
               type="button"
@@ -1309,8 +1603,11 @@ export default function App() {
 
               <div className="modal-author">
                 <div className="author-avatar">
-                  {(activePost.author || DEFAULT_AUTHOR).charAt(0).toUpperCase()}
+                  {(activePost.author || DEFAULT_AUTHOR)
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
+
                 <div>
                   <small>Written by</small>
                   <strong>{activePost.author || DEFAULT_AUTHOR}</strong>
@@ -1318,6 +1615,7 @@ export default function App() {
 
                 <div className="modal-quick-rating">
                   <Stars value={activeStats.avg} />
+
                   <span>
                     {activeStats.count > 0
                       ? `${activeStats.avg.toFixed(1)} · ${activeStats.count} ${
@@ -1330,7 +1628,7 @@ export default function App() {
 
               <p className="modal-content">{activePost.content}</p>
 
-              {/* TABS: Reviews | Q&A */}
+              {/* TABS */}
               <div className="tabs" role="tablist">
                 <button
                   type="button"
@@ -1355,22 +1653,40 @@ export default function App() {
                 </button>
               </div>
 
-              {/* ========== REVIEWS TAB ========== */}
+              {/* REVIEWS TAB */}
               {tab === 'reviews' && (
                 <section className="reviews">
-                  {/* REVIEW FORM */}
                   <form className="review-form" onSubmit={submitReview}>
                     <h4>Write a review</h4>
 
-                    <StarInput value={reviewRating} onChange={setReviewRating} />
+                    {!user && (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Your Name"
+                          value={guestName}
+                          maxLength={80}
+                          onChange={e => setGuestName(e.target.value)}
+                          required
+                        />
 
-                    <input
-                      type="text"
-                      placeholder="Your name *"
-                      value={reviewName}
-                      maxLength={40}
-                      required
-                      onChange={e => setReviewName(e.target.value)}
+                        <input
+                          type="email"
+                          placeholder="Your Email (Optional)"
+                          value={guestEmail}
+                          maxLength={254}
+                          onChange={e => setGuestEmail(e.target.value)}
+                        />
+
+                        <small>
+                          Your email is optional and will not be displayed publicly.
+                        </small>
+                      </>
+                    )}
+
+                    <StarInput
+                      value={reviewRating}
+                      onChange={setReviewRating}
                     />
 
                     <textarea
@@ -1379,6 +1695,7 @@ export default function App() {
                       value={reviewComment}
                       maxLength={500}
                       onChange={e => setReviewComment(e.target.value)}
+                      required
                     />
 
                     {reviewMsg.text && (
@@ -1390,13 +1707,13 @@ export default function App() {
 
                     <div className="review-foot">
                       <small>{reviewComment.length}/500</small>
+
                       <button type="submit" className="btn primary">
                         Submit Review →
                       </button>
                     </div>
                   </form>
 
-                  {/* REVIEW LIST - owner gets a three-dot menu */}
                   <div className="review-list">
                     {activeReviews.length === 0 ? (
                       <p className="no-reviews">
@@ -1406,7 +1723,6 @@ export default function App() {
                       activeReviews.map(r => {
                         const mine = isOwner(r);
 
-                        // EDIT MODE - only the comment can be changed
                         if (editReviewId === r.id) {
                           return (
                             <form
@@ -1449,7 +1765,11 @@ export default function App() {
                                   >
                                     Cancel
                                   </button>
-                                  <button type="submit" className="btn primary">
+
+                                  <button
+                                    type="submit"
+                                    className="btn primary"
+                                  >
                                     Save Changes
                                   </button>
                                 </div>
@@ -1458,11 +1778,10 @@ export default function App() {
                           );
                         }
 
-                        // NORMAL VIEW
                         return (
                           <div className="review-item" key={r.id}>
                             <div className="author-avatar small">
-                              {r.name.charAt(0).toUpperCase()}
+                              {(r.name || 'U').charAt(0).toUpperCase()}
                             </div>
 
                             <div className="review-main">
@@ -1470,9 +1789,11 @@ export default function App() {
                                 <strong>{r.name}</strong>
                                 <Stars value={r.rating} />
                                 <small>{formatDate(r.createdAt)}</small>
+
                                 {r.editedAt && (
                                   <small className="edited-tag">(edited)</small>
                                 )}
+
                                 {mine && <span className="you-tag">You</span>}
                               </div>
 
@@ -1531,45 +1852,76 @@ export default function App() {
                 </section>
               )}
 
-              {/* ========== Q&A TAB ========== */}
+              {/* Q&A TAB */}
               {tab === 'qa' && (
                 <section className="reviews qa">
-                  {/* ASK FORM */}
-                  <form className="review-form" onSubmit={submitQuestion}>
-                    <h4>Ask a question about this blog</h4>
-
-                    <input
-                      type="text"
-                      placeholder="Your name *"
-                      value={qName}
-                      maxLength={40}
-                      onChange={e => setQName(e.target.value)}
-                    />
-
-                    <textarea
-                      rows="3"
-                      placeholder="What would you like to ask the author or readers?"
-                      value={qText}
-                      maxLength={300}
-                      onChange={e => setQText(e.target.value)}
-                    />
-
-                    {qMsg.text && (
-                      <div className={`alert ${qMsg.type} review-msg`}>
-                        {qMsg.type === 'success' ? '✓ ' : '⚠ '}
-                        {qMsg.text}
-                      </div>
-                    )}
-
-                    <div className="review-foot">
-                      <small>{qText.length}/300</small>
-                      <button type="submit" className="btn primary">
-                        Post Question →
+                  {!user ? (
+                    <div className="owner-note">
+                      Log in to ask a question or answer the community.{' '}
+                      <button
+                        className="link-btn"
+                        type="button"
+                        onClick={() => setAuthMode('login')}
+                      >
+                        Log in / Create account
                       </button>
                     </div>
-                  </form>
+                  ) : (
+                    <form className="review-form" onSubmit={submitQuestion}>
+                      <h4>Ask a question about this blog</h4>
 
-                  {/* QUESTION LIST */}
+                      {!user && (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="Your Name"
+                            value={qGuestName}
+                            maxLength={80}
+                            onChange={e => setQGuestName(e.target.value)}
+                            required
+                          />
+
+                          <input
+                            type="email"
+                            placeholder="Your Email (private)"
+                            value={qGuestEmail}
+                            maxLength={254}
+                            onChange={e => setQGuestEmail(e.target.value)}
+                            required
+                          />
+
+                          <small>
+                            Your email will not be displayed publicly.
+                          </small>
+                        </>
+                      )}
+
+                      <textarea
+                        rows="3"
+                        placeholder="What would you like to ask the author or readers?"
+                        value={qText}
+                        maxLength={300}
+                        onChange={e => setQText(e.target.value)}
+                        required
+                      />
+
+                      {qMsg.text && (
+                        <div className={`alert ${qMsg.type} review-msg`}>
+                          {qMsg.type === 'success' ? '✓ ' : '⚠ '}
+                          {qMsg.text}
+                        </div>
+                      )}
+
+                      <div className="review-foot">
+                        <small>{qText.length}/300</small>
+
+                        <button type="submit" className="btn primary">
+                          Post Question →
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
                   <div className="review-list">
                     {activeQuestions.length === 0 ? (
                       <p className="no-reviews">
@@ -1588,7 +1940,8 @@ export default function App() {
                                 <div className="review-top">
                                   <strong>{q.name}</strong>
                                   <small>{formatDate(q.createdAt)}</small>
-                                  {q.ownerId === clientId && (
+
+                                  {isOwner(q) && (
                                     <span className="you-tag">You</span>
                                   )}
                                 </div>
@@ -1610,20 +1963,29 @@ export default function App() {
                                         }`}
                                   </button>
 
-                                  {q.ownerId === clientId && (
-                                    <button
-                                      type="button"
-                                      className="link-btn danger"
-                                      onClick={() => deleteQuestion(q)}
-                                    >
-                                      Delete
-                                    </button>
+                                  {isOwner(q) && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="link-btn"
+                                        onClick={() => editQuestion(q)}
+                                      >
+                                        Edit
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="link-btn danger"
+                                        onClick={() => deleteQuestion(q)}
+                                      >
+                                        Delete
+                                      </button>
+                                    </>
                                   )}
                                 </div>
                               </div>
                             </div>
 
-                            {/* ANSWERS */}
                             {answers.length > 0 && (
                               <div className="qa-answers">
                                 {answers.map(a => (
@@ -1634,15 +1996,24 @@ export default function App() {
                                       <div className="review-top">
                                         <strong>{a.name}</strong>
                                         <small>{formatDate(a.createdAt)}</small>
-                                        {a.ownerId === clientId && (
+
+                                        {isOwner(a) && (
                                           <span className="you-tag">You</span>
                                         )}
                                       </div>
 
                                       <p>{a.text}</p>
 
-                                      {a.ownerId === clientId && (
+                                      {isOwner(a) && (
                                         <div className="qa-actions">
+                                          <button
+                                            type="button"
+                                            className="link-btn"
+                                            onClick={() => editAnswer(q.id, a)}
+                                          >
+                                            Edit
+                                          </button>
+
                                           <button
                                             type="button"
                                             className="link-btn danger"
@@ -1658,20 +2029,11 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* REPLY FORM */}
-                            {replyOpenId === q.id && (
+                            {replyOpenId === q.id && user && (
                               <form
                                 className="qa-reply-form"
                                 onSubmit={e => submitAnswer(e, q.id)}
                               >
-                                <input
-                                  type="text"
-                                  placeholder="Your name *"
-                                  value={aName}
-                                  maxLength={40}
-                                  onChange={e => setAName(e.target.value)}
-                                />
-
                                 <textarea
                                   rows="3"
                                   placeholder="Write your answer..."
@@ -1689,7 +2051,11 @@ export default function App() {
 
                                 <div className="review-edit-actions">
                                   <small>{aText.length}/400</small>
-                                  <button type="submit" className="btn primary">
+
+                                  <button
+                                    type="submit"
+                                    className="btn primary"
+                                  >
                                     Post Answer
                                   </button>
                                 </div>
@@ -1706,6 +2072,25 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* AUTH MODAL */}
+      {authMode && (
+        <AuthModal
+          mode={authMode}
+          onModeChange={setAuthMode}
+          onClose={() => setAuthMode(null)}
+          onLogin={login}
+          onRegister={register}      onGoogleLogin={googleLogin}
+        />
+      )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <StoryNestApp />
+    </AuthProvider>
   );
 }
